@@ -22,7 +22,7 @@ permissions:
 
 concurrency:
   group: staging-ci
-  cancel-in-progress: false        # Let running suites finish
+  cancel-in-progress: true        # Let running suites finish
 
 jobs:
   # ── Resolve promotion base branch ───────────────────────────────
@@ -36,7 +36,8 @@ jobs:
         id: resolve
         env:
           GH_TOKEN: ${{ github.token }}
-          FALLBACK_BRANCH: ${{ github.event.repository.default_branch && github.event.repository.default_branch != '' && github.event.repository.default_branch || 'main' }}
+          GITHUB_TOKEN: ${{ github.token }}
+          FALLBACK_BRANCH: ${{ github.event.repository.default_branch || 'main' }}
           REPO: ${{ github.repository }}
         run: |
           LATEST=$(gh pr list --repo "${REPO}" --label staging-promotion --state open \
@@ -188,6 +189,7 @@ jobs:
         id: ahead-check
         env:
           GH_TOKEN: ${{ steps.token.outputs.token }}
+          GITHUB_TOKEN: ${{ steps.token.outputs.token }}
           PROMOTION_BASE: ${{ needs.resolve-promotion-base.outputs.promotion_base }}
         run: |
           git fetch origin "${PROMOTION_BASE}"
@@ -215,6 +217,7 @@ jobs:
         if: steps.ahead-check.outputs.commits_ahead != '0'
         env:
           GH_TOKEN: ${{ steps.token.outputs.token }}
+          GITHUB_TOKEN: ${{ steps.token.outputs.token }}
         run: |
           source .github/scripts/pr-body-utils.sh
           RANGE="${{ needs.check-changes.outputs.diff_range }}"
@@ -304,6 +307,7 @@ jobs:
       - name: Wait for Claude review job
         env:
           GH_TOKEN: ${{ steps.token.outputs.token }}
+          GITHUB_TOKEN: ${{ steps.token.outputs.token }}
           PR_NUMBER: ${{ needs.create-promotion-pr.outputs.pr_number }}
           REPO: ${{ github.repository }}
         run: |
@@ -343,6 +347,7 @@ jobs:
         id: process-findings
         env:
           GH_TOKEN: ${{ steps.token.outputs.token }}
+          GITHUB_TOKEN: ${{ steps.token.outputs.token }}
           PR_NUMBER: ${{ needs.create-promotion-pr.outputs.pr_number }}
           REPO: ${{ github.repository }}
         run: |
@@ -475,6 +480,7 @@ jobs:
         if: steps.evaluate.outputs.passed == 'true'
         env:
           GH_TOKEN: ${{ steps.token.outputs.token }}
+          GITHUB_TOKEN: ${{ steps.token.outputs.token }}
           PR_NUMBER: ${{ needs.create-promotion-pr.outputs.pr_number }}
         run: |
           source .github/scripts/pr-body-utils.sh
