@@ -72,15 +72,16 @@ jobs:
           FORCE_RUN: ${{ inputs.force }}
           PROMOTION_BASE: ${{ needs.resolve-promotion-base.outputs.promotion_base }}
         run: |
+          # robust check for changes since last tested (replace existing run: | contents)
           CURRENT_HEAD=$(git rev-parse HEAD)
           echo "current_head=${CURRENT_HEAD}" >> "$GITHUB_OUTPUT"
-
+          
           if git rev-parse staging-tested >/dev/null 2>&1; then
             LAST_TESTED=$(git rev-parse staging-tested)
           else
             LAST_TESTED=""
           fi
-
+          
           DIFF_RANGE=""
           if [ -n "$LAST_TESTED" ] && [ "$LAST_TESTED" = "$CURRENT_HEAD" ]; then
             echo "No new commits since last tested (${CURRENT_HEAD})"
@@ -92,13 +93,39 @@ jobs:
               echo "Found ${COMMIT_COUNT} new commit(s) since last tested"
               DIFF_RANGE="${LAST_TESTED}..${CURRENT_HEAD}"
             else
-              git fetch origin "${PROMOTION_BASE}"
-              MERGE_BASE=$(git merge-base "origin/${PROMOTION_BASE}" HEAD)
+              # Attempt to fetch the promotion base branch, but handle missing remote ref
+              PROMOTION_BASE="${PROMOTION_BASE:-main}"
+              # If remote branch doesn't exist, attempt to detect remote default branch
+              if ! git ls-remote --heads origin "${PROMOTION_BASE}" | grep -q .; then
+                echo "::warning::Remote branch 'origin/${PROMOTION_BASE}' not found. Falling back to remote default branch."
+                git fetch origin --prune
+                # Try to read the HEAD branch name from remote info
+                REMOTE_DEFAULT=$(git remote show origin 2>/dev/null | sed -n 's/  HEAD branch: //p' | tr -d '\r')
+                if [ -n "$REMOTE_DEFAULT" ]; then
+                  PROMOTION_BASE="$REMOTE_DEFAULT"
+                  echo "::warning::Using detected remote default branch: ${PROMOTION_BASE}"
+                else
+                  echo "::warning::Could not detect remote default branch; falling back to 'main' as last resort"
+                  PROMOTION_BASE="main"
+                fi
+              else
+                git fetch origin "${PROMOTION_BASE}"
+              fi
+          
+              # Ensure we at least fetched origin (so origin/<PROMOTION_BASE> exists locally if possible)
+              git fetch origin || true
+          
+              MERGE_BASE=$(git merge-base "origin/${PROMOTION_BASE}" HEAD || echo "")
+              if [ -z "$MERGE_BASE" ]; then
+                echo "::warning::Could not compute merge-base with origin/${PROMOTION_BASE}; using HEAD as baseline"
+                MERGE_BASE="${CURRENT_HEAD}"
+              fi
+          
               echo "First run -- reviewing from merge-base ${MERGE_BASE} against ${PROMOTION_BASE}"
               DIFF_RANGE="${MERGE_BASE}..${CURRENT_HEAD}"
             fi
           fi
-
+          
           # Force override from workflow_dispatch
           if [ "$FORCE_RUN" = "true" ]; then
             echo "Force run requested"
@@ -107,7 +134,7 @@ jobs:
               DIFF_RANGE="${CURRENT_HEAD}..${CURRENT_HEAD}"
             fi
           fi
-
+          
           echo "has_changes=${HAS_CHANGES}" >> "$GITHUB_OUTPUT"
           echo "diff_range=${DIFF_RANGE}" >> "$GITHUB_OUTPUT"
 
