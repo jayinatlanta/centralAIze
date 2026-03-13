@@ -36,7 +36,7 @@ jobs:
         id: resolve
         env:
           GH_TOKEN: ${{ github.token }}
-          FALLBACK_BRANCH: main
+          FALLBACK_BRANCH: ${{ github.event.repository.default_branch && github.event.repository.default_branch != '' && github.event.repository.default_branch || 'main' }}
           REPO: ${{ github.repository }}
         run: |
           LATEST=$(gh pr list --repo "${REPO}" --label staging-promotion --state open \
@@ -286,6 +286,7 @@ jobs:
 
       - name: Generate GitHub App token
         id: app-token
+        if: ${{ secrets.GH_RELEASES_MANAGER_APP_ID != '' && secrets.GH_RELEASES_MANAGER_APP_PRIVATE_KEY != '' }}
         uses: actions/create-github-app-token@v2
         with:
           app-id: ${{ secrets.GH_RELEASES_MANAGER_APP_ID }}
